@@ -219,6 +219,12 @@ def outputPredictions(dataset, features, labels, clf, filename):
             print >> f, "%d\t%d\t%s" % (
                 labels[i], pred[i], " ".join(dataset[i][0]))
 
+def getMultiLSTMInput(sentence, tokens, wordVectors, maxLength, dimVectors):
+    words = [x.lower() for x in re.findall(r"[\w']+|[.,!?;]", sentence)]
+    return getLSTMSentenceFeatures(tokens, wordVectors, dimVectors, words, maxLength)
+
+
+
 def getToxicData():
     data = []
     maxSentence = 0
@@ -258,6 +264,244 @@ def getToxicData():
     wordcount += 1
 
     return data, tokens, maxSentence
+
+def getMLToxicDataFixed():
+    data = []
+    maxSentence = 0
+    max_nontoxic = 100
+    with open('balanced_data_kevin.csv', 'rb') as csvfile:
+        reader = csv.reader(csvfile, delimiter=',')
+        count = 0
+        for i, row in enumerate(reader):
+            if count == 0:
+                count += 1
+                continue
+
+            if int(row[2]) != 0:
+                data.append(([x.lower() for x in re.findall(r"[\w']+|[.,!?;]", row[1])], int(row[3]), int(row[4]), int(row[5]), int(row[6]), int(row[7])))
+                count += 1
+
+            if count == 10001:
+                break
+            # if int(row[2]) == 0 and max_nontoxic != 0:
+            #     data.append(([x.lower() for x in re.findall(r"[\w']+|[.,!?;]", row[1])], int(row[3]), int(row[4]), int(row[5]), int(row[6]), int(row[7])))
+            #     max_nontoxic = max_nontoxic - 1
+            # elif int(row[2]) == 1:
+            #     data.append(([x.lower() for x in re.findall(r"[\w']+|[.,!?;]", row[1])], int(row[3]), int(row[4]), int(row[5]), int(row[6]), int(row[7])))
+
+    tokens = dict()
+    tokenfreq = dict()
+    wordcount = 0
+    revtokens = []
+    idx = 1
+
+    for row in data:
+        sentence = row[0]
+        if len(sentence) > maxSentence:
+            maxSentence = len(sentence)
+
+        for w in sentence:
+            wordcount += 1
+            if not w in tokens:
+                tokens[w] = idx
+                revtokens += [w]
+                tokenfreq[w] = 1
+                idx += 1
+            else:
+                tokenfreq[w] += 1
+
+    tokens["UNK"] = 0
+    revtokens += ["UNK"]
+    tokenfreq["UNK"] = 1
+    wordcount += 1
+
+    return data, tokens, maxSentence
+
+
+def getMLToxicData():
+    data = []
+    maxSentence = 0
+    with open('balanced_data_kevin.csv', 'rb') as csvfile:
+        reader = csv.reader(csvfile, delimiter=',')
+        count = 0
+        for i, row in enumerate(reader):
+            if count == 0:
+                count += 1
+                continue
+            data.append(([x.lower() for x in re.findall(r"[\w']+|[.,!?;]", row[1])], int(row[3]), int(row[4]), int(row[5]), int(row[6]), int(row[7])))
+
+    tokens = dict()
+    tokenfreq = dict()
+    wordcount = 0
+    revtokens = []
+    idx = 1
+
+    for row in data:
+        sentence = row[0]
+        if len(sentence) > maxSentence:
+            maxSentence = len(sentence)
+
+        for w in sentence:
+            wordcount += 1
+            if not w in tokens:
+                tokens[w] = idx
+                revtokens += [w]
+                tokenfreq[w] = 1
+                idx += 1
+            else:
+                tokenfreq[w] += 1
+
+    tokens["UNK"] = 0
+    revtokens += ["UNK"]
+    tokenfreq["UNK"] = 1
+    wordcount += 1
+
+    return data, tokens, maxSentence
+
+def getMLPMultiData():
+    dataset, tokens, maxLength= getMLToxicData()
+    # Shuffle data
+    shuffle(dataset)
+
+    maxLength = 100
+
+    num_data = len(dataset)
+
+    # Create train, dev, and test
+    train_cutoff = int(0.6 * num_data)
+    dev_start = int(0.6 * num_data) + 1
+    dev_cutoff = int(0.8 * num_data)
+
+    trainset = dataset[:train_cutoff]
+    devset = dataset[dev_start:dev_cutoff]
+    testset = dataset[dev_cutoff + 1:]
+
+    nWords = len(tokens)
+
+    wordVectors = glove.loadWordVectors(tokens)
+    dimVectors = wordVectors.shape[1]
+
+    # Load the train set
+    #trainset = dataset.getTrainSentences()
+    nTrain = len(trainset)
+    trainFeatures = np.zeros((nTrain, dimVectors))
+    trainLabels = np.zeros((nTrain, 5), dtype=np.int32)
+
+
+    for i in xrange(nTrain):
+        words = trainset[i][0]
+        trainLabels[i][0]= trainset[i][1]
+        trainLabels[i][1]= trainset[i][2]
+        trainLabels[i][2]= trainset[i][3]
+        trainLabels[i][3]= trainset[i][4]
+        trainLabels[i][4]= trainset[i][5]
+        #trainLabels[i][5]= trainset[i][6]
+        trainFeatures[i, :] = getMLPSentenceFeatures(tokens, wordVectors, dimVectors, words, maxLength)
+
+    # Prepare dev set features
+    #devset = dataset.getDevSentences()
+    nDev = len(devset)
+    devFeatures = np.zeros((nDev, dimVectors))
+    devLabels = np.zeros((nDev, 5), dtype=np.int32)
+    for i in xrange(nDev):
+        words = devset[i][0]
+        devLabels[i][0] = devset[i][1]
+        devLabels[i][1] = devset[i][2]
+        devLabels[i][2] = devset[i][3]
+        devLabels[i][3] = devset[i][4]
+        devLabels[i][4] = devset[i][5]
+        #devLabels[i][5] = devset[i][6]
+        devFeatures[i, :] = getMLPSentenceFeatures(tokens, wordVectors, dimVectors, words, maxLength)
+
+    # Prepare test set features
+    #testset = dataset.getTestSentences()
+    nTest = len(testset)
+    testFeatures = np.zeros((nTest, dimVectors))
+    testLabels = np.zeros((nTest, 5), dtype=np.int32)
+    for i in xrange(nTest):
+        words = testset[i][0]
+        testLabels[i][0] = testset[i][1]
+        testLabels[i][1] = testset[i][2]
+        testLabels[i][2] = testset[i][3]
+        testLabels[i][3] = testset[i][4]
+        testLabels[i][4] = testset[i][5]
+        #testLabels[i][5] = testset[i][6]
+        testFeatures[i, :] = getMLPSentenceFeatures(tokens, wordVectors, dimVectors, words, maxLength)
+
+    return trainFeatures, trainLabels, devFeatures, devLabels, testFeatures, testLabels, maxLength, dimVectors
+
+
+def getLSTMMultiData():
+    dataset, tokens, maxLength= getMLToxicData()
+    # Shuffle data
+    shuffle(dataset)
+
+    maxLength = 100
+
+    num_data = len(dataset)
+
+    # Create train, dev, and test
+    train_cutoff = int(0.6 * num_data)
+    dev_start = int(0.6 * num_data) + 1
+    dev_cutoff = int(0.8 * num_data)
+
+    trainset = dataset[:train_cutoff]
+    devset = dataset[dev_start:dev_cutoff]
+    testset = dataset[dev_cutoff + 1:]
+
+    nWords = len(tokens)
+
+    wordVectors = glove.loadWordVectors(tokens)
+    dimVectors = wordVectors.shape[1]
+
+    # Load the train set
+    #trainset = dataset.getTrainSentences()
+    nTrain = len(trainset)
+    trainFeatures = np.zeros((nTrain, maxLength, dimVectors))
+    trainLabels = np.zeros((nTrain, 5), dtype=np.int32)
+
+
+    for i in xrange(nTrain):
+        words = trainset[i][0]
+        trainLabels[i][0]= trainset[i][1]
+        trainLabels[i][1]= trainset[i][2]
+        trainLabels[i][2]= trainset[i][3]
+        trainLabels[i][3]= trainset[i][4]
+        trainLabels[i][4]= trainset[i][5]
+        #trainLabels[i][5]= trainset[i][6]
+        trainFeatures[i, :] = getLSTMSentenceFeatures(tokens, wordVectors, dimVectors, words, maxLength)
+
+    # Prepare dev set features
+    #devset = dataset.getDevSentences()
+    nDev = len(devset)
+    devFeatures = np.zeros((nDev, maxLength, dimVectors))
+    devLabels = np.zeros((nDev, 5), dtype=np.int32)
+    for i in xrange(nDev):
+        words = devset[i][0]
+        devLabels[i][0] = devset[i][1]
+        devLabels[i][1] = devset[i][2]
+        devLabels[i][2] = devset[i][3]
+        devLabels[i][3] = devset[i][4]
+        devLabels[i][4] = devset[i][5]
+        #devLabels[i][5] = devset[i][6]
+        devFeatures[i, :] = getLSTMSentenceFeatures(tokens, wordVectors, dimVectors, words, maxLength)
+
+    # Prepare test set features
+    #testset = dataset.getTestSentences()
+    nTest = len(testset)
+    testFeatures = np.zeros((nTest, maxLength, dimVectors))
+    testLabels = np.zeros((nTest, 5), dtype=np.int32)
+    for i in xrange(nTest):
+        words = testset[i][0]
+        testLabels[i][0] = testset[i][1]
+        testLabels[i][1] = testset[i][2]
+        testLabels[i][2] = testset[i][3]
+        testLabels[i][3] = testset[i][4]
+        testLabels[i][4] = testset[i][5]
+        #testLabels[i][5] = testset[i][6]
+        testFeatures[i, :] = getLSTMSentenceFeatures(tokens, wordVectors, dimVectors, words, maxLength)
+
+    return trainFeatures, trainLabels, devFeatures, devLabels, testFeatures, testLabels, maxLength, dimVectors#, tokens, wordVectors
 
 def getLSTMData():
     dataset, tokens, maxLength= getToxicData()

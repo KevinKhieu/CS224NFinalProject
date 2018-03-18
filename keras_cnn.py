@@ -14,13 +14,18 @@ timesteps = maxLength
 num_classes = 2
 
 
+print "kernel size: 5"
+print "stride: 1"
+print "pool size: 4"
+print "Layers: 2"
+
 model = Sequential()
 model.add(Conv1D(32, kernel_size=(5,), strides=(1,),
                  activation='relu',
                  input_shape=(timesteps, data_dim)))
-model.add(MaxPooling1D(pool_size=(2,), strides=(2,)))
+model.add(MaxPooling1D(pool_size=(4,), strides=(1,)))
 model.add(Conv1D(64, (5,), activation='relu'))
-model.add(MaxPooling1D(pool_size=(2,)))
+model.add(MaxPooling1D(pool_size=(4,)))
 model.add(Flatten())
 model.add(Dense(1000, activation='relu'))
 model.add(Dense(num_classes, activation='softmax'))
@@ -33,3 +38,4 @@ model.compile(loss='sparse_categorical_crossentropy',
 model.fit(X_train, y_train,
           batch_size=64, epochs=100,
           validation_data=(X_dev, y_dev))
+
